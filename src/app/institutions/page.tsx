@@ -28,11 +28,16 @@ export default function InstitutionsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-neutral-900">
-            AICTE Institution Master Directory
-          </h2>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            Official repository of approved institutions indexed by AICTE Permanent ID · Showing {filtered.length} of {institutions.length}
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="text-xl font-bold tracking-tight text-neutral-900">
+              AICTE Institution Master Directory
+            </h2>
+            <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700 border border-neutral-200 uppercase">
+              Synthetic Demonstration Data
+            </span>
+          </div>
+          <p className="text-xs text-neutral-500">
+            Canonical master repository of approved technical institutions indexed by AICTE Permanent ID · Showing {filtered.length} of {institutions.length}
           </p>
         </div>
         <Link

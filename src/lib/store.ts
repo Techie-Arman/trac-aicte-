@@ -40,6 +40,9 @@ let duplicateReviewEvents = [...mockDuplicateReviewEvents];
 let caseActions = [...mockCaseActions];
 let alerts = [...mockAlerts];
 
+// Configurable statutory SLA baseline target (30-day statutory norm vs 21-day SIH expedited target)
+let statutorySLATargetDays = 30;
+
 // Current session user context for UI simulation (starts unauthenticated — login page is shown first)
 let currentUser: User | null = null;
 let isAuthenticated: boolean = false;
@@ -336,6 +339,10 @@ export const dataStore = {
     };
   },
 
-  // SLA rules
+  // SLA rules and Statutory Baseline Target
   getSLARules: () => [...mockSLARules],
+  getStatutorySLATarget: () => statutorySLATargetDays,
+  setStatutorySLATarget: (days: number) => {
+    statutorySLATargetDays = days;
+  },
 };

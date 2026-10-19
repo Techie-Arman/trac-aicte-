@@ -151,10 +151,17 @@ export default function CaseDetailPage() {
             <div className="flex flex-wrap items-center gap-4 text-xs text-neutral-500 mt-2 font-medium">
               <span className="flex items-center gap-1.5">
                 <Building className="w-3.5 h-3.5 text-neutral-400" />
-                {complaint.institution_name_raw}
+                <span>
+                  {complaint.institution_name_raw}
+                  {complaint.institution && complaint.institution.name !== complaint.institution_name_raw && (
+                    <span className="text-neutral-500 font-normal ml-1.5">
+                      · <strong className="text-neutral-800 font-semibold">Canonical:</strong> {complaint.institution.name}
+                    </span>
+                  )}
+                </span>
               </span>
               <span className="flex items-center gap-1.5 font-mono">
-                AICTE ID: {complaint.permanent_id_raw || 'Unmatched / Pending Queue'}
+                AICTE ID: {complaint.permanent_id_raw || (complaint.institution ? complaint.institution.aicte_permanent_id : 'Unmatched / Pending Queue')}
               </span>
               <span className="flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-neutral-400" />

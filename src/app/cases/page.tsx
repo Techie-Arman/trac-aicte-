@@ -23,22 +23,49 @@ import { CaseStatus } from '@/types';
 function CasesContent() {
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get('search') || '';
+  const initialStatus = searchParams.get('status') || 'ALL';
+  const initialBureau = searchParams.get('bureau') || 'ALL';
+  const initialQuick = (searchParams.get('filter') === 'overdue' ? 'overdue' : searchParams.get('filter') === 'unresolved_id' ? 'unresolved_id' : 'all');
+  const initialRegion = searchParams.get('region') || 'ALL';
+  const initialCategory = searchParams.get('category') || 'ALL';
 
   const currentUser = dataStore.getCurrentUser();
   const allCases = dataStore.getComplaints();
 
   const [search, setSearch] = useState(initialSearch);
-  const [bureauFilter, setBureauFilter] = useState<string>('ALL');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [quickFilter, setQuickFilter] = useState<'all' | 'overdue' | 'unresolved_id'>('all');
+  const [bureauFilter, setBureauFilter] = useState<string>(initialBureau);
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
+  const [regionFilter, setRegionFilter] = useState<string>(initialRegion);
+  const [categoryFilter, setCategoryFilter] = useState<string>(initialCategory);
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'overdue' | 'unresolved_id'>(initialQuick);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
+  // Extract distinct categories and regions for dropdowns
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    allCases.forEach(c => { if (c.category) set.add(c.category); });
+    return Array.from(set).sort();
+  }, [allCases]);
+
+  const regions = useMemo(() => {
+    const set = new Set<string>();
+    allCases.forEach(c => {
+      if (c.institution?.region) set.add(c.institution.region);
+    });
+    return Array.from(set).sort();
+  }, [allCases]);
+
   useEffect(() => {
-    if (initialSearch) {
-      setSearch(initialSearch);
-    }
-  }, [initialSearch]);
+    if (initialSearch) setSearch(initialSearch);
+    if (initialStatus !== 'ALL') setStatusFilter(initialStatus);
+    if (initialBureau !== 'ALL') setBureauFilter(initialBureau);
+    if (initialQuick !== 'all') setQuickFilter(initialQuick);
+    if (initialRegion !== 'ALL') setRegionFilter(initialRegion);
+    if (initialCategory !== 'ALL') setCategoryFilter(initialCategory);
+  }, [initialSearch, initialStatus, initialBureau, initialQuick, initialRegion, initialCategory]);
 
   const filteredCases = useMemo(() => {
     return allCases.filter((c) => {
@@ -47,10 +74,23 @@ function CasesContent() {
         c.case_number.toLowerCase().includes(q) ||
         c.institution_name_raw.toLowerCase().includes(q) ||
         (c.permanent_id_raw && c.permanent_id_raw.toLowerCase().includes(q)) ||
-        c.category.toLowerCase().includes(q);
+        c.category.toLowerCase().includes(q) ||
+        c.description.toLowerCase().includes(q);
 
       const matchesBureau = bureauFilter === 'ALL' || c.bureau_code === bureauFilter;
       const matchesStatus = statusFilter === 'ALL' || c.status === statusFilter;
+      const matchesRegion = regionFilter === 'ALL' || (c.institution?.region === regionFilter);
+      const matchesCategory = categoryFilter === 'ALL' || c.category === categoryFilter;
+
+      let matchesDateFrom = true;
+      if (dateFrom) {
+        matchesDateFrom = new Date(c.date_received) >= new Date(dateFrom);
+      }
+
+      let matchesDateTo = true;
+      if (dateTo) {
+        matchesDateTo = new Date(c.date_received) <= new Date(dateTo + 'T23:59:59.999Z');
+      }
 
       let matchesQuick = true;
       if (quickFilter === 'overdue') {
@@ -62,14 +102,36 @@ function CasesContent() {
         matchesQuick = !c.permanent_id_raw;
       }
 
-      return matchesSearch && matchesBureau && matchesStatus && matchesQuick;
+      return matchesSearch && matchesBureau && matchesStatus && matchesRegion && matchesCategory && matchesDateFrom && matchesDateTo && matchesQuick;
     });
-  }, [allCases, search, bureauFilter, statusFilter, quickFilter]);
+  }, [allCases, search, bureauFilter, statusFilter, regionFilter, categoryFilter, dateFrom, dateTo, quickFilter]);
+
+  const hasActiveFilters =
+    Boolean(search) ||
+    bureauFilter !== 'ALL' ||
+    statusFilter !== 'ALL' ||
+    regionFilter !== 'ALL' ||
+    categoryFilter !== 'ALL' ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    quickFilter !== 'all';
+
+  const resetAllFilters = () => {
+    setSearch('');
+    setBureauFilter('ALL');
+    setStatusFilter('ALL');
+    setRegionFilter('ALL');
+    setCategoryFilter('ALL');
+    setDateFrom('');
+    setDateTo('');
+    setQuickFilter('all');
+    setCurrentPage(1);
+  };
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, bureauFilter, statusFilter, quickFilter]);
+  }, [search, bureauFilter, statusFilter, regionFilter, categoryFilter, dateFrom, dateTo, quickFilter]);
 
   const totalPages = Math.ceil(filteredCases.length / pageSize) || 1;
   const paginatedCases = useMemo(() => {
@@ -162,75 +224,106 @@ function CasesContent() {
         </span>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div
-        className="p-4 rounded-2xl flex flex-col md:flex-row gap-3 items-stretch md:items-center bg-white border border-neutral-200 shadow-xs"
-      >
-        <div className="relative flex-1">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-neutral-400" />
-          <input
-            type="text"
-            placeholder="Search by case #, institution, permanent ID or category…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="mono-input w-full pl-9 pr-3 py-2 text-xs bg-white border border-neutral-300 text-neutral-900 focus:border-neutral-900"
-          />
+      {/* Filter and Search Bar (Multi-parameter functional filters) */}
+      <div className="p-4 rounded-2xl space-y-3 bg-white border border-neutral-200 shadow-xs">
+        {/* Row 1: Search input + Quick Filter Chips */}
+        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center">
+          <div className="relative flex-1">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Search by case #, institution, permanent ID, category or keyword…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="mono-input w-full pl-9 pr-3 py-2 text-xs bg-white border border-neutral-300 text-neutral-900 focus:border-neutral-900"
+            />
+          </div>
+
+          {/* Quick filter chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+            <button
+              onClick={() => setQuickFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                quickFilter === 'all'
+                  ? 'bg-neutral-900 text-white'
+                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setQuickFilter('overdue')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${
+                quickFilter === 'overdue'
+                  ? 'bg-neutral-900 text-white'
+                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+              }`}
+            >
+              <Clock className="w-3 h-3" /> Overdue (SLA)
+            </button>
+            <button
+              onClick={() => setQuickFilter('unresolved_id')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                quickFilter === 'unresolved_id'
+                  ? 'bg-neutral-900 text-white'
+                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+              }`}
+            >
+              Unresolved ID
+            </button>
+          </div>
         </div>
 
-        {/* Quick filter chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto py-1">
-          <button
-            onClick={() => setQuickFilter('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-              quickFilter === 'all'
-                ? 'bg-neutral-900 text-white'
-                : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setQuickFilter('overdue')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${
-              quickFilter === 'overdue'
-                ? 'bg-neutral-900 text-white'
-                : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-            }`}
-          >
-            <Clock className="w-3 h-3" /> Overdue (SLA)
-          </button>
-          <button
-            onClick={() => setQuickFilter('unresolved_id')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-              quickFilter === 'unresolved_id'
-                ? 'bg-neutral-900 text-white'
-                : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-            }`}
-          >
-            Unresolved ID
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <SlidersHorizontal className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
+        {/* Row 2: Detailed Filters (Bureau, Region, Category, Status, Date Range) */}
+        <div className="pt-2 border-t border-neutral-100 flex flex-wrap items-center gap-2">
+          {/* Bureau */}
           <select
             value={bureauFilter}
             onChange={(e) => setBureauFilter(e.target.value)}
-            className="mono-select px-3 py-2 text-xs rounded-xl border border-neutral-300 text-neutral-800"
+            className="mono-select px-2.5 py-1.5 text-xs rounded-xl border border-neutral-300 text-neutral-800 bg-white"
+            title="Filter by Bureau / Cell"
           >
-            <option value="ALL">All Bureaus</option>
+            <option value="ALL">All Bureaus/Cells</option>
             <option value="RB">Regulation Bureau (RB)</option>
-            <option value="PGRC">Public Grievance Cell (PGRC)</option>
+            <option value="PGRC">Public Grievance (PGRC)</option>
             <option value="EB">Extension Bureau (EB)</option>
             <option value="AB">Approval Bureau (AB)</option>
             <option value="QAC">Quality Assurance (QAC)</option>
             <option value="LC">Legal Cell (LC)</option>
           </select>
 
+          {/* Region */}
+          <select
+            value={regionFilter}
+            onChange={(e) => setRegionFilter(e.target.value)}
+            className="mono-select px-2.5 py-1.5 text-xs rounded-xl border border-neutral-300 text-neutral-800 bg-white"
+            title="Filter by Institution Region"
+          >
+            <option value="ALL">All Regions</option>
+            {regions.map((reg) => (
+              <option key={reg} value={reg}>{reg} Region</option>
+            ))}
+          </select>
+
+          {/* Category */}
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="mono-select px-2.5 py-1.5 text-xs rounded-xl border border-neutral-300 text-neutral-800 bg-white max-w-[200px] truncate"
+            title="Filter by Grievance Category"
+          >
+            <option value="ALL">All Complaint Categories</option>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+
+          {/* Status */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="mono-select px-3 py-2 text-xs rounded-xl border border-neutral-300 text-neutral-800"
+            className="mono-select px-2.5 py-1.5 text-xs rounded-xl border border-neutral-300 text-neutral-800 bg-white"
+            title="Filter by Case Status"
           >
             <option value="ALL">All Statuses</option>
             <option value="pending">Pending</option>
@@ -239,6 +332,36 @@ function CasesContent() {
             <option value="escalated">Escalated</option>
             <option value="disposed">Disposed</option>
           </select>
+
+          {/* Date Range */}
+          <div className="flex items-center gap-1.5 text-neutral-600 text-xs">
+            <span className="text-[10px] uppercase font-bold text-neutral-400">From</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="mono-input px-2 py-1 text-xs rounded-lg border border-neutral-300 bg-white text-neutral-800"
+              title="Filter from received date"
+            />
+            <span className="text-[10px] uppercase font-bold text-neutral-400">To</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="mono-input px-2 py-1 text-xs rounded-lg border border-neutral-300 bg-white text-neutral-800"
+              title="Filter to received date"
+            />
+          </div>
+
+          {/* Active Filter Count and Reset */}
+          {hasActiveFilters && (
+            <button
+              onClick={resetAllFilters}
+              className="ml-auto px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 transition cursor-pointer"
+            >
+              Clear Filters
+            </button>
+          )}
         </div>
       </div>
 

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "npx tsx scripts/verify-data-integrity.ts"
   },
   "dependencies": {
     "lucide-react": "^1.16.0",

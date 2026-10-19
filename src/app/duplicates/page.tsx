@@ -43,7 +43,7 @@ export default function DuplicateReviewsPage() {
         <Sparkles className="w-5 h-5 flex-shrink-0 mt-0.5 text-neutral-900" />
         <div className="text-xs text-neutral-700 leading-relaxed">
           <strong className="text-neutral-900">Isolated AI Duplicate Analysis Engine:</strong>{' '}
-          Suspected duplicates are never merged or closed automatically. This workflow is completely separate from Cross-Bureau Overlaps. Authorized human officer verification is strictly required before any consolidation.
+          Suspected duplicates are flagged via NLP text similarity across complaint descriptions for the same institution. Similarity scores are computed via trigram/embedding text matching (illustrative demonstration model). Suspected duplicates are never merged or closed automatically, keeping duplicate detection strictly separate from Cross-Bureau Overlaps. Authorized human officer verification is strictly required before any action.
         </div>
       </div>
 
@@ -124,14 +124,14 @@ export default function DuplicateReviewsPage() {
               <div
                 className="rounded-2xl p-5 bg-white border border-neutral-200 shadow-xs"
               >
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">
                     AI Text Similarity Match
                   </span>
                   <span
-                    className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-neutral-900 text-white"
+                    className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-neutral-900 text-white self-start sm:self-auto"
                   >
-                    Similarity Confidence: {Math.round(activeFlag.confidence * 100)}%
+                    NLP Similarity Score: {Math.round(activeFlag.confidence * 100)}% (Illustrative Demonstration Model)
                   </span>
                 </div>
                 <h3 className="text-base font-bold text-neutral-900">{activeFlag.institution_name}</h3>

@@ -319,7 +319,12 @@ export default function ReportsPage() {
           <div
             className="p-4 rounded-2xl text-xs bg-white border border-neutral-200 shadow-xs"
           >
-            <p className="font-bold text-neutral-900 mb-1">Database Implementation Specification:</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="font-bold text-neutral-900">Database Implementation Specification:</p>
+              <span className="text-[10px] font-mono text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
+                Statutory Target: {dataStore.getStatutorySLATarget()} Days
+              </span>
+            </div>
             <p className="text-neutral-600 leading-relaxed">
               In compliance with architectural rules, &quot;pending beyond timeline&quot; is generated via the dynamic SQL view{' '}
               <code

@@ -28,14 +28,15 @@ interface MetricCardProps {
   critical?: boolean;
   dim?: boolean;
   delay?: string;
+  href?: string;
 }
 
-function MetricCard({ label, value, sub, icon: Icon, emphasis, critical, dim, delay }: MetricCardProps) {
-  return (
+function MetricCard({ label, value, sub, icon: Icon, emphasis, critical, dim, delay, href }: MetricCardProps) {
+  const cardContent = (
     <div
       className={`rounded-2xl p-4 flex flex-col gap-2 transition-all duration-200 animate-fade-in-up bg-white border shadow-xs hover:shadow-md hover:border-neutral-300 ${
         critical ? 'border-neutral-900 ring-1 ring-neutral-900/10' : 'border-neutral-200/80'
-      }`}
+      } ${href ? 'cursor-pointer' : ''}`}
       style={{ animationDelay: delay || '0ms' }}
     >
       <div className="flex items-center justify-between">
@@ -58,6 +59,12 @@ function MetricCard({ label, value, sub, icon: Icon, emphasis, critical, dim, de
       <span className="text-[10px] text-neutral-500">{sub}</span>
     </div>
   );
+
+  if (href) {
+    return <Link href={href} className="block">{cardContent}</Link>;
+  }
+
+  return cardContent;
 }
 
 export default function DashboardPage() {
@@ -155,14 +162,15 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── KPI Metric Cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <MetricCard label="Total Cases"   value={metrics.total}               sub="Across all Bureaus"       icon={FileText}       delay="0ms"   />
-        <MetricCard label="Pending"       value={metrics.pending}             sub="Awaiting scrutiny"        icon={Clock}          delay="40ms"  emphasis />
-        <MetricCard label="Under Process" value={metrics.underProcess}        sub="Active investigation"     icon={AlertTriangle}  delay="80ms" emphasis />
-        <MetricCard label="Transferred"   value={metrics.transferred}         sub="Active cross-bureau"      icon={ArrowRightLeft} delay="120ms" />
-        <MetricCard label="Overdue (SLA)" value={metrics.pendingBeyondTimeline} sub="Statutory breach"      icon={ShieldAlert}    delay="160ms" critical />
-        <MetricCard label="Disposed"      value={metrics.disposed}            sub="Resolved & closed"        icon={CheckCircle2}   delay="200ms" dim />
+      {/* ── KPI Metric Cards (5 Mutually Exclusive Statuses + Total + SLA Breach Metric) ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+        <MetricCard label="Total Cases"   value={metrics.total}                 sub="Across all Bureaus"       icon={FileText}       delay="0ms"   href="/cases" />
+        <MetricCard label="Pending"       value={metrics.pending}               sub="Awaiting scrutiny"        icon={Clock}          delay="30ms"  emphasis href="/cases?status=pending" />
+        <MetricCard label="Under Process" value={metrics.underProcess}          sub="Active investigation"     icon={AlertTriangle}  delay="60ms"  emphasis href="/cases?status=under_process" />
+        <MetricCard label="Transferred"   value={metrics.transferred}           sub="Active cross-bureau"      icon={ArrowRightLeft} delay="90ms"  href="/cases?status=transferred" />
+        <MetricCard label="Escalated"     value={metrics.escalated}             sub="Apex scrutiny review"     icon={Flame}          delay="120ms" critical href="/cases?status=escalated" />
+        <MetricCard label="Disposed"      value={metrics.disposed}              sub="Resolved & closed"        icon={CheckCircle2}   delay="150ms" dim href="/cases?status=disposed" />
+        <MetricCard label="Overdue (SLA)" value={metrics.pendingBeyondTimeline} sub="Statutory SLA breach"    icon={ShieldAlert}    delay="180ms" critical href="/cases?filter=overdue" />
       </div>
 
       {/* ── Executive SLA Case-Aging Heatmap & Escalation Velocity ── */}
@@ -181,7 +189,9 @@ export default function DashboardPage() {
               Live age distribution of active complaints against statutory disposal windows
             </p>
           </div>
-          <span className="text-[10px] text-neutral-400 font-mono">Statutory Target: 30 Days</span>
+          <span className="text-[10px] text-neutral-400 font-mono">
+            Statutory Target: {dataStore.getStatutorySLATarget()} Days
+          </span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
