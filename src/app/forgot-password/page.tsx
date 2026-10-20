@@ -6,11 +6,18 @@ import { Mail, ArrowLeft, CheckCircle2, Shield } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (email) setSubmitted(true);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email.trim())) {
+      setError('Please provide a valid official email address (e.g. user@institution.edu.in).');
+      return;
+    }
+    setError('');
+    setSubmitted(true);
   };
 
   return (
@@ -64,11 +71,19 @@ export default function ForgotPasswordPage() {
                     type="email"
                     required
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (error) setError('');
+                    }}
                     placeholder="name@aicte.gov.in"
                     className="block w-full pl-10 pr-4 py-2.5 text-xs bg-black/40 border border-white/10 rounded-xl text-white placeholder-neutral-600 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-all"
                   />
                 </div>
+                {error && (
+                  <p className="text-[11px] font-medium text-rose-400 mt-1.5 leading-normal">
+                    {error}
+                  </p>
+                )}
               </div>
 
               <button

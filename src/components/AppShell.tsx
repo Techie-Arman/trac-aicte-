@@ -169,14 +169,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             </div>
             <div>
               <div className="text-xs font-bold tracking-wide text-white">TRAC-AICTE</div>
-              <div className="text-[10px] tracking-wider text-white/40">Grievance Intelligence</div>
+              <div className="text-[10px] tracking-wider text-white/60">Grievance Intelligence</div>
             </div>
           </Link>
 
           {/* Navigation */}
           <nav className="flex-1 p-3 space-y-0.5">
             <div
-              className="px-3 py-2 text-[9px] font-bold tracking-[0.18em] uppercase text-white/30"
+              className="px-3 py-2 text-[9px] font-bold tracking-[0.18em] uppercase text-white/60"
             >
               Surveillance
             </div>
@@ -228,7 +228,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           <div
             className="flex items-center justify-between mb-1.5 px-1"
           >
-            <span className="text-[9px] font-bold tracking-[0.15em] uppercase text-white/30">
+            <span className="text-[9px] font-bold tracking-[0.15em] uppercase text-white/60">
               Demo Persona
             </span>
             <span
@@ -244,7 +244,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           >
             <div className="truncate">
               <div className="text-[11px] font-semibold truncate text-white">{currentUser.name}</div>
-              <div className="text-[10px] capitalize text-white/40 mt-0.5 truncate">
+              <div className="text-[10px] capitalize text-white/60 mt-0.5 truncate">
                 {currentUser.role.replace('_', ' ')} {currentUser.bureau_code ? `· ${currentUser.bureau_code}` : ''}
               </div>
             </div>
@@ -257,7 +257,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             <div
               className="absolute bottom-full left-3 right-3 mb-2 rounded-2xl p-1.5 z-50 bg-[#161619] border border-white/15 shadow-2xl backdrop-blur-2xl"
             >
-              <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white/40 border-b border-white/10">
+              <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white/60 border-b border-white/10">
                 Switch Official Perspective
               </div>
               <div className="space-y-0.5 mt-1 max-h-56 overflow-y-auto">
@@ -466,6 +466,24 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto text-neutral-900"
         >
           {children}
+
+          {/* Institutional Footer */}
+          <footer className="mt-16 pt-6 border-t border-neutral-200 text-xs text-neutral-500 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-neutral-700">TRAC-AICTE</span>
+              <span>·</span>
+              <span>Technical Redressal &amp; Approval Council</span>
+            </div>
+            <div className="flex items-center gap-4 text-[11px]">
+              <Link href="/privacy" className="hover:text-neutral-900 transition-colors">
+                Privacy Policy
+              </Link>
+              <Link href="/terms" className="hover:text-neutral-900 transition-colors">
+                Terms &amp; Conditions
+              </Link>
+              <span className="text-neutral-400">v0.1 Pre-Launch</span>
+            </div>
+          </footer>
         </main>
       </div>
 

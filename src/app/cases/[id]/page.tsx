@@ -66,14 +66,22 @@ export default function CaseDetailPage() {
 
   const handleUpdateStatus = (e: React.FormEvent) => {
     e.preventDefault();
-    dataStore.updateComplaintStatus(complaint.id, selectedStatus, statusRemarks);
+    if (!statusRemarks.trim() || statusRemarks.trim().length < 5) {
+      alert('Official remarks must be at least 5 characters long.');
+      return;
+    }
+    dataStore.updateComplaintStatus(complaint.id, selectedStatus, statusRemarks.trim());
     setStatusModalOpen(false);
     setStatusRemarks('');
   };
 
   const handleTransfer = (e: React.FormEvent) => {
     e.preventDefault();
-    dataStore.transferComplaint(complaint.id, targetBureau, transferRemarks);
+    if (!transferRemarks.trim() || transferRemarks.trim().length < 5) {
+      alert('Transfer reason must be at least 5 characters long.');
+      return;
+    }
+    dataStore.transferComplaint(complaint.id, targetBureau, transferRemarks.trim());
     setTransferModalOpen(false);
     setTransferRemarks('');
   };
@@ -393,6 +401,7 @@ export default function CaseDetailPage() {
                 </label>
                 <textarea
                   required
+                  minLength={5}
                   rows={3}
                   value={statusRemarks}
                   onChange={(e) => setStatusRemarks(e.target.value)}
@@ -454,6 +463,7 @@ export default function CaseDetailPage() {
                 </label>
                 <textarea
                   required
+                  minLength={5}
                   rows={3}
                   value={transferRemarks}
                   onChange={(e) => setTransferRemarks(e.target.value)}

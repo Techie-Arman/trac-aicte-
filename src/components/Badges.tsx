@@ -34,8 +34,8 @@ export const StatusBadge: React.FC<{ status: CaseStatus }> = ({ status }) => {
     disposed: {
       bg: '#fafafa',
       border: '#e4e4e7',
-      color: '#a1a1aa',
-      dot: '#d4d4d8',
+      color: '#52525b',
+      dot: '#71717a',
       label: 'Disposed',
     },
   };
