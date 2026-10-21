@@ -131,10 +131,10 @@ export default function DashboardPage() {
       {/* ── Overlap Alert Banner (When collisions exist) ── */}
       {metrics.openOverlaps > 0 && (
         <div
-          className="p-4 rounded-2xl flex items-center gap-4 animate-fade-in-up bg-white border-2 border-neutral-900 shadow-sm"
+          className="p-4 rounded-2xl flex items-center gap-4 animate-fade-in-up bg-[#feebeb] border-2 border-red-800 shadow-sm"
         >
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-neutral-900 text-white"
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-red-800 text-white"
           >
             <AlertTriangle className="w-4 h-4" />
           </div>
@@ -144,7 +144,7 @@ export default function DashboardPage() {
                 Cross-Bureau Overlap Collisions Detected
               </span>
               <span
-                className="text-[9px] font-black px-2 py-0.5 rounded-full bg-neutral-900 text-white"
+                className="text-[9px] font-black px-2 py-0.5 rounded-full bg-red-800 text-white"
               >
                 {metrics.openOverlaps} Open Overlaps
               </span>
@@ -155,7 +155,7 @@ export default function DashboardPage() {
           </div>
           <Link
             href="/overlaps"
-            className="btn-primary px-3.5 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1 flex-shrink-0 cursor-pointer shadow-xs"
+            className="px-3.5 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1 flex-shrink-0 cursor-pointer shadow-xs bg-red-800 text-white hover:bg-red-800 transition-colors"
           >
             Review in Center <ArrowRight className="w-3 h-3" />
           </Link>
