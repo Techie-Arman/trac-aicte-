@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, ArrowRight, AlertCircle, Zap } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight, AlertCircle, Play } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { dataStore } from '@/lib/store';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
 
 /* ── Animated floating glass panels ── */
 const PANELS = [
@@ -193,14 +194,14 @@ function HalftoneWordmark() {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated } = useAuth();
-  const allUsers = dataStore.getAllUsers();
+  const { login, enterDemoMode, isAuthenticated, isLoading: authLoading } = useAuth();
 
-  const [email, setEmail] = useState('admin@aicte.gov.in');
-  const [password, setPassword] = useState('demo123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDemoLoading, setIsDemoLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -208,43 +209,31 @@ export default function LoginPage() {
     if (isAuthenticated) router.replace('/');
   }, [isAuthenticated, router]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    setTimeout(() => {
-      if (!email.trim()) {
-        setError('Please enter your official email address.');
-        setIsLoading(false);
-        return;
-      }
-      if (!password.trim()) {
-        setError('Please enter your password.');
-        setIsLoading(false);
-        return;
-      }
-
-      const user = allUsers.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-      if (user) {
-        login(user.email, user.role);
-      } else {
-        login(email.trim());
-      }
+    const signInError = await login(email.trim(), password);
+    if (signInError) {
+      setError(signInError);
       setIsLoading(false);
-      router.push('/');
-    }, 400);
+      return;
+    }
+    router.replace('/');
   };
 
-  const handleQuickDemoLogin = (userEmail: string) => {
-    setIsLoading(true);
-    setTimeout(() => {
-      login(userEmail);
-      router.push('/');
-    }, 300);
+  const handleDemoLogin = async () => {
+    setError(null);
+    setIsDemoLoading(true);
+    const demoSignInError = await enterDemoMode();
+    if (demoSignInError) {
+      setError(demoSignInError);
+      setIsDemoLoading(false);
+      return;
+    }
+    router.replace('/');
   };
-
-  const primaryUser = allUsers[0];
 
   return (
     <div
@@ -322,7 +311,7 @@ export default function LoginPage() {
             animationDelay: '100ms',
           }}
         >
-          {/* Demo notice with visible default credentials */}
+          {/* Supabase sign-in notice */}
           <div
             className="mb-5 p-3 rounded-xl text-xs flex items-start gap-2.5"
             style={{
@@ -330,12 +319,13 @@ export default function LoginPage() {
               border: '1px solid rgba(255,255,255,0.08)',
             }}
           >
-            <Zap className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-white/60" />
             <div style={{ color: 'rgba(255,255,255,0.6)' }}>
               <span className="font-semibold text-white/90">
-                Demonstration Environment.
+                {isSupabaseConfigured ? 'Official account sign-in.' : 'Supabase is not configured.'}
               </span>{' '}
-              Default demo email: <strong className="text-white font-mono">admin@aicte.gov.in</strong> (Password: <span className="font-mono text-white/80">demo123</span>). Click <strong>Quick Login</strong> below for instant access.
+              {isSupabaseConfigured
+                ? 'Use the email and password for your Supabase Auth account.'
+                : 'Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to enable official account sign-in.'}
             </div>
           </div>
 
@@ -368,7 +358,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@aicte.gov.in"
+                placeholder="name@institution.edu.in"
                 className="w-full px-4 py-2.5 text-sm rounded-xl text-white placeholder-white/30 transition-all focus:outline-none"
                 style={{
                   background: 'rgba(255,255,255,0.05)',
@@ -398,9 +388,10 @@ export default function LoginPage() {
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Demo password: any value accepted"
+                  placeholder="Enter your password"
                   className="w-full px-4 py-2.5 pr-10 text-sm rounded-xl text-white placeholder-white/30 transition-all focus:outline-none"
                   style={{
                     background: 'rgba(255,255,255,0.05)',
@@ -432,8 +423,8 @@ export default function LoginPage() {
             {/* Sign-in button */}
             <button
               type="submit"
-              disabled={isLoading}
-              className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold rounded-xl bg-white text-black hover:bg-neutral-200 transition-all mt-2 cursor-pointer shadow-[0_4px_16px_rgba(255,255,255,0.12)] active:scale-[0.99]"
+              disabled={isLoading || authLoading || !isSupabaseConfigured}
+              className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold rounded-xl bg-white text-black hover:bg-neutral-200 transition-all mt-2 cursor-pointer shadow-[0_4px_16px_rgba(255,255,255,0.12)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? (
                 <span className="flex items-center gap-2">
@@ -447,82 +438,40 @@ export default function LoginPage() {
                 <>Sign In to Terminal <ArrowRight className="w-4 h-4" /></>
               )}
             </button>
+            <div className="text-right">
+              <Link href="/forgot-password" className="text-[11px] text-white/50 hover:text-white transition-colors">
+                Forgot password?
+              </Link>
+            </div>
           </form>
 
-          {/* ── Quick Demo Login Section ── */}
-          <div className="mt-6 pt-5" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
-              <span
-                className="text-[10px] font-bold tracking-[0.2em] uppercase"
-                style={{ color: 'rgba(255,255,255,0.35)' }}
-              >
-                Instant Quick Demo Login
-              </span>
-              <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
-            </div>
-
-            {/* Primary quick-login */}
-            <div
-              className="rounded-xl p-3.5 mb-3"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-semibold text-white">
-                    {primaryUser?.name ?? 'Dr. Abhay Jere'}
-                  </div>
-                  <div className="text-[11px] font-mono mt-0.5 text-white/50">
-                    {primaryUser?.email ?? 'admin@aicte.gov.in'}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-wider mt-0.5 text-white/40">
-                    {primaryUser?.role?.replace('_', ' ') ?? 'Admin'} · Apex Authority
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemoLogin(primaryUser?.email ?? 'admin@aicte.gov.in')}
-                  className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-white text-black hover:bg-neutral-200 transition-all flex-shrink-0 cursor-pointer shadow-[0_0_15px_rgba(255,255,255,0.15)] active:scale-[0.98]"
-                >
-                  Quick Login
-                </button>
-              </div>
-            </div>
-
-            {/* Other demo roles (Dark translucent cards — NEVER white) */}
-            <div className="grid grid-cols-2 gap-2">
-              {allUsers.slice(1, 5).map((u) => (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => handleQuickDemoLogin(u.email)}
-                  className="p-2.5 text-left rounded-xl transition cursor-pointer text-white"
-                  style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.07)',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)';
-                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
-                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)';
-                  }}
-                >
-                  <div className="text-[11px] font-semibold truncate text-white/90">
-                    {u.name}
-                  </div>
-                  <div className="text-[10px] mt-0.5 uppercase tracking-wider truncate text-white/40">
-                    {u.role.replace('_', ' ')}{u.bureau_code ? ` · ${u.bureau_code}` : ''}
-                  </div>
-                </button>
-              ))}
-            </div>
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-white/10" />
+            <span className="text-[10px] font-medium uppercase tracking-wider text-white/35">or</span>
+            <div className="h-px flex-1 bg-white/10" />
           </div>
+          <button
+            type="button"
+            disabled={authLoading || isLoading || isDemoLoading}
+            onClick={() => void handleDemoLogin()}
+            className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold rounded-xl border border-white/20 text-white/90 hover:bg-white/10 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isDemoLoading ? (
+              <>
+                <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
+                Connecting to demo…
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4" />
+                Continue with Demo
+              </>
+            )}
+          </button>
+          <p className="mt-2 text-center text-[10px] leading-relaxed text-white/40">
+            Explore using a dedicated Supabase demo account. Demo access follows that account’s database permissions.
+          </p>
+
         </div>
 
         {/* ── Product description footer ── */}

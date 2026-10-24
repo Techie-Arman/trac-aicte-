@@ -13,6 +13,23 @@
 | AI / Text Similarity | Trigram / embeddings / LLM for duplicate complaint suggestions only |
 | Export | PDF and Excel generation (server-side) |
 
+## Supabase Auth setup
+
+1. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from the Supabase project.
+2. Link the CLI to the empty Supabase project and apply the checked-in schema:
+
+   ```powershell
+   npx supabase link --project-ref <project-ref>
+   npx supabase db push
+   ```
+
+3. Set `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` and run `npm run db:seed` to idempotently upsert the synthetic dashboard dataset. This server-only key is used by the seed script; never prefix it with `NEXT_PUBLIC_` or expose it to browser code.
+4. Enable email/password authentication and create accounts in Supabase Auth. Add `/auth/callback?next=%2Freset-password` to the Auth redirect URL allow list for password recovery.
+
+The dashboard reads all application records from Supabase after sign-in and does not fall back to client-side mock data. The seed script loads mock fixtures into Supabase; they are not the runtime data source. New accounts receive the least-privileged `other_official` profile. Change a user's role only through a trusted administrative database operation; profile roles are not editable by the user. All exposed tables have RLS enabled, and the case and review mutations run through `SECURITY INVOKER` database functions.
+
+The migration and seed have not been applied automatically. Run the commands above against the intended project before signing in. Do not send database passwords, service-role keys, or secret keys in chat.
+
 ---
 
 ## 2. High-level flow

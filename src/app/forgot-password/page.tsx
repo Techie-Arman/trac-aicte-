@@ -3,13 +3,16 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { Mail, ArrowLeft, CheckCircle2, Shield } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 
 export default function ForgotPasswordPage() {
+  const { requestPasswordReset } = useAuth();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || !emailRegex.test(email.trim())) {
@@ -17,6 +20,13 @@ export default function ForgotPasswordPage() {
       return;
     }
     setError('');
+    setIsLoading(true);
+    const resetError = await requestPasswordReset(email.trim());
+    setIsLoading(false);
+    if (resetError) {
+      setError(resetError);
+      return;
+    }
     setSubmitted(true);
   };
 
@@ -48,16 +58,8 @@ export default function ForgotPasswordPage() {
               </div>
               <h3 className="font-bold text-base text-white tracking-tight">Recovery Token Dispatched</h3>
               <p className="text-xs text-neutral-400 leading-relaxed">
-                A verification link has been securely dispatched to <strong className="text-white">{email}</strong>. Proceed to create your updated passphrase.
+                If an account exists for <strong className="text-white">{email}</strong>, a secure password reset link has been sent. Use the link in your email to choose a new password.
               </p>
-              <div className="pt-2">
-                <Link
-                  href="/reset-password"
-                  className="inline-block px-5 py-2.5 bg-white text-black rounded-xl text-xs font-semibold hover:bg-neutral-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] active:scale-[0.98]"
-                >
-                  Proceed to Reset Screen &rarr;
-                </Link>
-              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -88,9 +90,10 @@ export default function ForgotPasswordPage() {
 
               <button
                 type="submit"
-                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-black bg-white hover:bg-neutral-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] active:scale-[0.98]"
+                disabled={isLoading}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-black bg-white hover:bg-neutral-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
               >
-                Send Recovery Link
+                {isLoading ? 'Sending…' : 'Send Recovery Link'}
               </button>
             </form>
           )}

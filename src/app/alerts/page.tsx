@@ -9,10 +9,16 @@ import { BureauBadge } from '@/components/Badges';
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState(dataStore.getAlerts());
   const [filterType, setFilterType] = useState('ALL');
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const handleMarkRead = (id: string) => {
-    dataStore.markAlertAsRead(id);
-    setAlerts([...dataStore.getAlerts()]);
+  const handleMarkRead = async (id: string) => {
+    setActionError(null);
+    try {
+      await dataStore.markAlertAsRead(id);
+      setAlerts([...dataStore.getAlerts()]);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to update alert.');
+    }
   };
 
   const filtered = alerts.filter((a) => filterType === 'ALL' || a.type === filterType);
@@ -43,6 +49,11 @@ export default function AlertsPage() {
       </div>
 
       <div className="space-y-3">
+        {actionError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800" role="alert">
+            {actionError}
+          </div>
+        )}
         {filtered.map((alt) => {
           const isOverlap    = alt.type === 'overlap';
           const isBreach     = alt.type === 'sla_breach';

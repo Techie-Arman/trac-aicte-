@@ -17,18 +17,28 @@ export default function InstitutionQueuePage() {
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>('');
   const [resolutionReason, setResolutionReason] = useState<string>('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isResolving, setIsResolving] = useState(false);
 
   const activeItem = queue.find((q) => q.id === selectedQueueItem);
   const suggestions = activeItem ? dataStore.getSuggestionsForQueueItem(activeItem.id) : [];
 
-  const handleResolve = (e: React.FormEvent) => {
+  const handleResolve = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeItem || !selectedInstitutionId) return;
-    dataStore.resolveInstitutionQueueItem(activeItem.id, selectedInstitutionId, resolutionReason);
-    setSuccessMessage(`Case ${activeItem.case_number} successfully linked to institution. Cross-bureau overlap check triggered.`);
-    setSelectedInstitutionId('');
-    setResolutionReason('');
-    setSelectedQueueItem(null);
+    setIsResolving(true);
+    setActionError(null);
+    try {
+      await dataStore.resolveInstitutionQueueItem(activeItem.id, selectedInstitutionId, resolutionReason);
+      setSuccessMessage(`Case ${activeItem.case_number} was successfully linked to the selected institution.`);
+      setSelectedInstitutionId('');
+      setResolutionReason('');
+      setSelectedQueueItem(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to resolve institution.');
+    } finally {
+      setIsResolving(false);
+    }
   };
 
   return (
@@ -62,6 +72,11 @@ export default function InstitutionQueuePage() {
         >
           <CheckCircle className="w-4 h-4 flex-shrink-0 text-white" />
           <span>{successMessage}</span>
+        </div>
+      )}
+      {actionError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800" role="alert">
+          {actionError}
         </div>
       )}
 
@@ -219,10 +234,10 @@ export default function InstitutionQueuePage() {
                   </span>
                   <button
                     type="submit"
-                    disabled={!selectedInstitutionId}
+                    disabled={!selectedInstitutionId || isResolving}
                     className="btn-primary px-5 py-2 text-xs font-semibold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                   >
-                    Confirm &amp; Link Institution
+                    {isResolving ? 'Saving...' : 'Confirm & Link Institution'}
                   </button>
                 </div>
               </form>

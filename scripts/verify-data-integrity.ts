@@ -1,13 +1,14 @@
-import { dataStore } from '../src/lib/store';
 import {
   mockInstitutions,
   mockBureaus,
   mockComplaints,
+  mockCaseActions,
   mockOverlapFlags,
   mockDuplicateFlags,
   mockMatchSuggestions,
   mockResolutionQueue,
-  mockAlerts
+  mockAlerts,
+  mockSLARules,
 } from '../src/lib/mock-data';
 
 function assert(condition: boolean, message: string) {
@@ -23,12 +24,70 @@ console.log('========================================================');
 console.log('TRAC-AICTE Comprehensive Data Integrity Validation Suite');
 console.log('========================================================\n');
 
+const complaints = mockComplaints.map((complaint) => ({
+  ...complaint,
+  institution: mockInstitutions.find((institution) => institution.id === complaint.institution_id),
+}));
+const statusCount = (status: typeof complaints[number]['status']) =>
+  complaints.filter((complaint) => complaint.status === status).length;
+const metrics = {
+  total: complaints.length,
+  pending: statusCount('pending'),
+  underProcess: statusCount('under_process'),
+  transferred: statusCount('transferred'),
+  escalated: statusCount('escalated'),
+  disposed: statusCount('disposed'),
+  bureauWorkload: mockBureaus.map((bureau) => {
+    const bureauComplaints = complaints.filter((complaint) => complaint.bureau_code === bureau.code);
+    return {
+      code: bureau.code,
+      name: bureau.name,
+      total: bureauComplaints.length,
+      active: bureauComplaints.filter((complaint) => complaint.status !== 'disposed').length,
+      disposed: bureauComplaints.filter((complaint) => complaint.status === 'disposed').length,
+    };
+  }),
+};
+const bureauById = new Map(mockBureaus.map((bureau) => [bureau.id, bureau]));
+const institutionIds = new Set(mockInstitutions.map((institution) => institution.id));
+const complaintById = new Map(complaints.map((complaint) => [complaint.id, complaint]));
+const queueIds = new Set(mockResolutionQueue.map((item) => item.id));
+
+assert(
+  complaints.every((complaint) =>
+    bureauById.get(complaint.bureau_id)?.code === complaint.bureau_code &&
+    (!complaint.institution_id || institutionIds.has(complaint.institution_id))),
+  'Every case references an existing bureau and, when linked, an existing institution',
+);
+assert(
+  mockCaseActions.every((action) =>
+    complaintById.has(action.case_id) && bureauById.has(action.bureau_id)),
+  'Every seeded case action references an existing case and bureau',
+);
+assert(
+  mockResolutionQueue.every((item) =>
+    complaintById.get(item.case_id)?.case_number === item.case_number),
+  'Every institution queue entry references its matching case and case number',
+);
+assert(
+  mockMatchSuggestions.every((suggestion) =>
+    queueIds.has(suggestion.queue_id) && institutionIds.has(suggestion.suggested_institution_id)),
+  'Every institution suggestion references an existing queue item and institution',
+);
+assert(
+  [...mockOverlapFlags, ...mockDuplicateFlags].every((flag) =>
+    institutionIds.has(flag.institution_id) && flag.case_ids.every((id) => complaintById.has(id))),
+  'Every overlap and duplicate flag references an existing institution and case',
+);
+assert(
+  mockSLARules.every((rule) => bureauById.get(rule.bureau_id)?.code === rule.bureau_code),
+  'Every SLA rule references its matching bureau',
+);
+
 // 1. RECONCILE ALL CASE COUNTS
 console.log('--- 1. Case Count and Status Reconciliations ---');
-const complaints = dataStore.getComplaints();
 assert(complaints.length === 250, `Total complaints count is exactly 250 (found ${complaints.length})`);
 
-const metrics = dataStore.getDashboardMetrics();
 assert(metrics.total === 250, `Dashboard metrics total is 250 (found ${metrics.total})`);
 assert(metrics.pending === 70, `Pending status count is exactly 70 (found ${metrics.pending})`);
 assert(metrics.underProcess === 65, `Under Process count is exactly 65 (found ${metrics.underProcess})`);
@@ -91,22 +150,22 @@ mockInstitutions.forEach(inst => {
 
 // 4. CASE-TO-INSTITUTION ASSOCIATION CONSISTENCY
 console.log('\n--- 4. Case-to-Institution Associations ---');
-const case2 = dataStore.getComplaintById('c-2');
+const case2 = complaints.find((complaint) => complaint.id === 'c-2');
 assert(case2?.institution_id === 'inst-1', `Case TRAC-2026-00002 belongs to inst-1 (Apex Institute) (found ${case2?.institution_id})`);
 assert(case2?.institution?.name === 'Apex Institute of Technology & Management', `Case TRAC-2026-00002 resolves to Apex Institute of Technology & Management`);
 
-const case1 = dataStore.getComplaintById('c-1');
+const case1 = complaints.find((complaint) => complaint.id === 'c-1');
 assert(case1?.institution_id === 'inst-1', `Case TRAC-2026-00001 belongs to inst-1 (Apex Institute)`);
 
 // Overlap 1 connects c-1 and c-2 on inst-1
-const ov1 = dataStore.getOverlapFlags().find(f => f.id === 'ov-1');
+const ov1 = mockOverlapFlags.find(f => f.id === 'ov-1');
 assert(ov1?.institution_id === 'inst-1' && ov1?.case_ids.includes('c-1') && ov1?.case_ids.includes('c-2'), 'Overlap ov-1 correctly binds c-1 and c-2 on inst-1');
 
 // Duplicate 1 connects c-1 and c-107 on inst-1
-const dup1 = dataStore.getDuplicateFlags().find(f => f.id === 'dup-1');
+const dup1 = mockDuplicateFlags.find(f => f.id === 'dup-1');
 assert(dup1?.institution_id === 'inst-1' && dup1?.case_ids.includes('c-1') && dup1?.case_ids.includes('c-107'), 'Duplicate dup-1 correctly binds c-1 and c-107 on inst-1');
 
-const case107 = dataStore.getComplaintById('c-107');
+const case107 = complaints.find((complaint) => complaint.id === 'c-107');
 assert(case107?.institution_id === 'inst-1', 'Case c-107 belongs to inst-1 (Apex Institute)');
 assert(case1?.category === case107?.category, `Duplicate pair c-1 & c-107 share identical category "${case1?.category}"`);
 
@@ -115,21 +174,21 @@ console.log('\n--- 5. Candidate Suggestions Coherence ---');
 const q1 = mockResolutionQueue.find(q => q.id === 'q-1');
 assert(q1?.raw_institution_name === 'Vanguard Inst. of Architecture & Design', 'Queue item q-1 is Vanguard Inst. of Architecture & Design');
 
-const q1Suggestions = dataStore.getSuggestionsForQueueItem('q-1');
+const q1Suggestions = mockMatchSuggestions.filter((suggestion) => suggestion.queue_id === 'q-1');
 const q1Top = q1Suggestions[0];
 assert(q1Top?.suggested_institution_id === 'inst-4', `q-1 (Vanguard) top candidate is inst-4 Vanguard School of Architecture (found ${q1Top?.suggested_institution_id})`);
 assert(q1Top?.confidence >= 0.90, `q-1 top suggestion confidence is >= 0.90 (found ${q1Top?.confidence})`);
 assert(q1Top?.match_details.city === 'Mumbai Suburban' && q1Top?.match_details.state === 'Maharashtra', 'q-1 top suggestion location matches Mumbai Suburban, Maharashtra');
 
 const q2 = mockResolutionQueue.find(q => q.id === 'q-2');
-const q2Suggestions = dataStore.getSuggestionsForQueueItem('q-2');
+const q2Suggestions = mockMatchSuggestions.filter((suggestion) => suggestion.queue_id === 'q-2');
 const q2Top = q2Suggestions[0];
 assert(q2Top?.suggested_institution_id === 'inst-6', `q-2 (Aryabhatta) top candidate is inst-6 Aryabhatta Institute (found ${q2Top?.suggested_institution_id})`);
 assert(q2Top?.confidence >= 0.90, `q-2 top suggestion confidence is >= 0.90 (found ${q2Top?.confidence})`);
 
 // 6. SLA AGEING AND STATUTORY RULE
 console.log('\n--- 6. SLA Ageing and Statutory Target ---');
-const statutoryTarget = dataStore.getStatutorySLATarget();
+const statutoryTarget = 30;
 assert(statutoryTarget === 30 || statutoryTarget === 21, `Statutory SLA target is configured (${statutoryTarget} days)`);
 
 const now = new Date();

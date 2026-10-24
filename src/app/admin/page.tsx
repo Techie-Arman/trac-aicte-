@@ -4,16 +4,19 @@ import React, { useState } from 'react';
 import { Settings, Users, Clock, Layers, Lock } from 'lucide-react';
 import { dataStore } from '@/lib/store';
 import { BureauBadge } from '@/components/Badges';
+import { useAuth } from '@/lib/auth-context';
 
 type AdminTab = 'users' | 'bureaus' | 'sla';
 
 export default function AdminPage() {
+  const { showToast } = useAuth();
   const currentUser = dataStore.getCurrentUser();
   const users = dataStore.getAllUsers();
   const bureaus = dataStore.getAllBureaus();
   const slaRules = dataStore.getSLARules();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
+  const [statutoryTarget, setStatutoryTarget] = useState(dataStore.getStatutorySLATarget());
   const isAdmin = currentUser.role === 'admin';
 
   const tabs: { key: AdminTab; label: string; icon: React.ElementType; count: number }[] = [
@@ -152,10 +155,15 @@ export default function AdminPage() {
               <div className="flex items-center gap-2">
                 <span className="text-xs text-neutral-600 font-medium">Configured Target:</span>
                 <select
-                  value={dataStore.getStatutorySLATarget()}
+                  value={statutoryTarget}
                   onChange={(e) => {
-                    dataStore.setStatutorySLATarget(Number(e.target.value));
-                    setActiveTab('sla'); // Trigger re-render
+                    const days = Number(e.target.value);
+                    void dataStore.setStatutorySLATarget(days).then(() => {
+                      setStatutoryTarget(days);
+                      showToast('Statutory SLA target saved to Supabase.');
+                    }).catch((error: unknown) => {
+                      showToast(error instanceof Error ? error.message : 'Unable to save statutory SLA target.');
+                    });
                   }}
                   className="mono-select px-3 py-1.5 text-xs rounded-xl border border-neutral-300 bg-neutral-50 font-bold text-neutral-900"
                 >
