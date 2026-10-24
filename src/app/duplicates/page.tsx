@@ -15,14 +15,20 @@ export default function DuplicateReviewsPage() {
   );
   const [notes, setNotes] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const activeFlag = flags.find((f) => f.id === selectedFlagId);
 
-  const handleAction = (action: 'confirmed_duplicate' | 'dismissed' | 'remark') => {
+  const handleAction = async (action: 'confirmed_duplicate' | 'dismissed' | 'remark') => {
     if (!activeFlag) return;
-    dataStore.recordDuplicateReview(activeFlag.id, action, notes);
-    setSuccessMessage(`Duplicate review action recorded: ${action}`);
-    setNotes('');
+    setActionError(null);
+    try {
+      await dataStore.recordDuplicateReview(activeFlag.id, action, notes);
+      setSuccessMessage(`Duplicate review action recorded: ${action}`);
+      setNotes('');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to save duplicate review.');
+    }
   };
 
   return (
@@ -53,6 +59,11 @@ export default function DuplicateReviewsPage() {
         >
           <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-white" />
           <span>{successMessage}</span>
+        </div>
+      )}
+      {actionError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800" role="alert">
+          {actionError}
         </div>
       )}
 

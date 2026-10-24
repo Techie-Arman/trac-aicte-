@@ -24,6 +24,8 @@ export default function NewCasePage() {
   });
 
   const [selectedInstId, setSelectedInstId] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleInstitutionSelect = (instId: string) => {
     setSelectedInstId(instId);
@@ -39,38 +41,44 @@ export default function NewCasePage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
+    setIsSubmitting(true);
 
-    const targetBureau = bureaus.find((b) => b.code === formData.bureau_code) || bureaus[0];
+    try {
+      const targetBureau = bureaus.find((b) => b.code === formData.bureau_code);
+      if (!targetBureau) throw new Error('The selected bureau is not available.');
 
-    // Compute expected disposal date
-    const expDate = new Date();
-    expDate.setDate(expDate.getDate() + Number(formData.expected_days));
+      const expDate = new Date();
+      expDate.setDate(expDate.getDate() + Number(formData.expected_days));
 
-    // Institution resolution logic
-    const matchedInst = institutions.find(
-      (i) => i.aicte_permanent_id === formData.permanent_id_raw.trim()
-    );
+      const matchedInst = institutions.find(
+        (i) => i.aicte_permanent_id === formData.permanent_id_raw.trim()
+      );
 
-    const created = dataStore.createComplaint({
-      institution_id: matchedInst ? matchedInst.id : null,
-      institution_name_raw: formData.institution_name_raw,
-      permanent_id_raw: formData.permanent_id_raw || null,
-      category: formData.category,
-      description: formData.description,
-      complainant_type: formData.complainant_type,
-      date_received: new Date().toISOString(),
-      status: 'pending',
-      bureau_id: targetBureau.id,
-      bureau_code: targetBureau.code,
-      assigned_officer_id: currentUser.id,
-      assigned_officer_name: currentUser.name,
-      expected_disposal_date: expDate.toISOString(),
-      match_method: matchedInst ? 'id' : undefined,
-    });
+      const created = await dataStore.createComplaint({
+        institution_id: matchedInst ? matchedInst.id : null,
+        institution_name_raw: formData.institution_name_raw,
+        permanent_id_raw: formData.permanent_id_raw || null,
+        category: formData.category,
+        description: formData.description,
+        complainant_type: formData.complainant_type,
+        date_received: new Date().toISOString(),
+        status: 'pending',
+        bureau_id: targetBureau.id,
+        bureau_code: targetBureau.code,
+        assigned_officer_id: currentUser.id,
+        assigned_officer_name: currentUser.name,
+        expected_disposal_date: expDate.toISOString(),
+        match_method: matchedInst ? 'id' : undefined,
+      });
 
-    router.push(`/cases/${created.id}`);
+      router.push(`/cases/${created.id}`);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Unable to register case.');
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -100,6 +108,12 @@ export default function NewCasePage() {
             <span className="font-bold text-neutral-900">Permanent ID Matching Protocol:</span> If the AICTE Permanent ID is omitted or not recognized, the complaint will immediately be routed to the manual <strong className="text-neutral-900">Institution Resolution Queue</strong>. Fuzzy matching will provide suggestions only and will never automatically link or merge records.
           </div>
         </div>
+
+        {submitError && (
+          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800" role="alert">
+            {submitError}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Quick Select from Known Master Institutions */}
@@ -242,10 +256,11 @@ export default function NewCasePage() {
             </Link>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-6 py-2.5 bg-neutral-900 text-white hover:bg-neutral-800 font-semibold text-xs rounded-xl shadow-xs active:scale-[0.98] transition-all cursor-pointer"
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-1.5 px-6 py-2.5 bg-neutral-900 text-white hover:bg-neutral-800 font-semibold text-xs rounded-xl shadow-xs active:scale-[0.98] transition-all cursor-pointer disabled:cursor-wait disabled:opacity-60"
             >
-              <Save className="w-4 h-4" />
-              Register Complaint
+              {isSubmitting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Save className="w-4 h-4" />}
+              {isSubmitting ? 'Saving to Supabase…' : 'Register Complaint'}
             </button>
           </div>
         </form>

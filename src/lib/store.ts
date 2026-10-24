@@ -1,19 +1,4 @@
 import {
-  mockBureaus,
-  mockUsers,
-  mockInstitutions,
-  mockComplaints,
-  mockCaseActions,
-  mockResolutionQueue,
-  mockMatchSuggestions,
-  mockOverlapFlags,
-  mockOverlapReviewEvents,
-  mockDuplicateFlags,
-  mockDuplicateReviewEvents,
-  mockSLARules,
-  mockAlerts
-} from './mock-data';
-import {
   Complaint,
   Institution,
   CaseAction,
@@ -25,324 +10,389 @@ import {
   DuplicateReviewEvent,
   Alert,
   User,
-  BureauCode
+  Bureau,
+  BureauCode,
+  SLARule,
 } from '@/types';
+import { createClient } from '@/lib/supabase/client';
 
-// In-memory state copy for interactive UI operations during frontend session
-let complaints = [...mockComplaints];
-let institutions = [...mockInstitutions];
-let resolutionQueue = [...mockResolutionQueue];
-let matchSuggestions = [...mockMatchSuggestions];
-let overlapFlags = [...mockOverlapFlags];
-let overlapReviewEvents = [...mockOverlapReviewEvents];
-let duplicateFlags = [...mockDuplicateFlags];
-let duplicateReviewEvents = [...mockDuplicateReviewEvents];
-let caseActions = [...mockCaseActions];
-let alerts = [...mockAlerts];
-
-// Configurable statutory SLA baseline target (30-day statutory norm vs 21-day SIH expedited target)
+let complaints: Complaint[] = [];
+let institutions: Institution[] = [];
+let bureaus: Bureau[] = [];
+let users: User[] = [];
+let resolutionQueue: InstitutionResolutionQueueItem[] = [];
+let matchSuggestions: InstitutionMatchSuggestion[] = [];
+let overlapFlags: OverlapFlag[] = [];
+let overlapReviewEvents: OverlapReviewEvent[] = [];
+let duplicateFlags: DuplicateFlag[] = [];
+let duplicateReviewEvents: DuplicateReviewEvent[] = [];
+let caseActions: CaseAction[] = [];
+let alerts: Alert[] = [];
+let slaRules: SLARule[] = [];
 let statutorySLATargetDays = 30;
-
-// Current session user context for UI simulation (starts unauthenticated — login page is shown first)
 let currentUser: User | null = null;
-let isAuthenticated: boolean = false;
+let revision = 0;
+const listeners = new Set<() => void>();
+
+function notifyLoaded() {
+  revision += 1;
+  listeners.forEach((listener) => listener());
+}
+
+async function readRows<T>(table: string): Promise<T[]> {
+  const { data, error } = await createClient().from(table).select('*');
+  if (error) throw new Error(`Unable to load ${table}: ${error.message}`);
+  return (data ?? []) as T[];
+}
+
+function requireResult<T>(data: T | null, error: { message: string } | null, operation: string): T {
+  if (error) throw new Error(`${operation}: ${error.message}`);
+  if (data === null) throw new Error(`${operation}: Supabase returned no row.`);
+  return data;
+}
+
+function getCaseActionType(status: Complaint['status']): CaseAction['action_type'] {
+  if (status === 'transferred' || status === 'escalated' || status === 'disposed') return status;
+  return 'updated';
+}
 
 export const dataStore = {
-  // Authentication & Session
-  isAuthenticated: () => isAuthenticated,
-  getCurrentUser: (): User => currentUser || mockUsers[0],
-  getSessionUser: (): User | null => currentUser,
-  login: (email: string, role?: string) => {
-    const found = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase()) || mockUsers[0];
-    currentUser = found;
-    isAuthenticated = true;
-    return found;
+  subscribe: (listener: () => void) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  },
+  getRevision: () => revision,
+
+  loadFromSupabase: async () => {
+    const client = createClient();
+    const { data: authData, error: authError } = await client.auth.getUser();
+    if (authError) throw new Error(`Unable to verify the signed-in account: ${authError.message}`);
+    if (!authData.user) throw new Error('A Supabase account is required to load dashboard data.');
+
+    const { data: existingProfile, error: profileError } = await client
+      .from('users')
+      .select('*')
+      .eq('id', authData.user.id)
+      .maybeSingle();
+    if (profileError) throw new Error(`Unable to load your account profile: ${profileError.message}`);
+
+    let profile = existingProfile;
+    if (!profile) {
+      const { data, error } = await client
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          name: authData.user.user_metadata?.full_name ?? authData.user.email ?? 'Official',
+          email: authData.user.email ?? '',
+          role: 'other_official',
+          is_seed: false,
+        })
+        .select('*')
+        .single();
+      if (error) throw new Error(`Unable to create your account profile: ${error.message}`);
+      profile = data;
+    }
+    currentUser = profile as User;
+
+    const [
+      bureauRows,
+      userRows,
+      institutionRows,
+      complaintRows,
+      actionRows,
+      queueRows,
+      suggestionRows,
+      overlapRows,
+      overlapEventRows,
+      duplicateRows,
+      duplicateEventRows,
+      alertRows,
+      slaRows,
+      settingRows,
+    ] = await Promise.all([
+      readRows<Bureau>('bureaus'),
+      readRows<User>('users'),
+      readRows<Institution>('institutions'),
+      readRows<Complaint>('complaints'),
+      readRows<CaseAction>('case_actions'),
+      readRows<InstitutionResolutionQueueItem>('institution_resolution_queue'),
+      readRows<InstitutionMatchSuggestion>('institution_match_suggestions'),
+      readRows<OverlapFlag>('overlap_flags'),
+      readRows<OverlapReviewEvent>('overlap_review_events'),
+      readRows<DuplicateFlag>('duplicate_flags'),
+      readRows<DuplicateReviewEvent>('duplicate_review_events'),
+      readRows<Alert>('alerts'),
+      readRows<SLARule>('sla_rules'),
+      readRows<{ id: string; value: number }>('app_settings'),
+    ]);
+
+    bureaus = bureauRows;
+    users = userRows;
+    institutions = institutionRows;
+    complaints = complaintRows.map((complaint) => ({
+      ...complaint,
+      institution: institutionRows.find((institution) => institution.id === complaint.institution_id),
+    }));
+    caseActions = actionRows;
+    resolutionQueue = queueRows;
+    matchSuggestions = suggestionRows;
+    overlapFlags = overlapRows.map((flag) => ({
+      ...flag,
+      cases: complaints.filter((complaint) => flag.case_ids.includes(complaint.id)),
+    }));
+    overlapReviewEvents = overlapEventRows;
+    duplicateFlags = duplicateRows.map((flag) => ({
+      ...flag,
+      cases: complaints.filter((complaint) => flag.case_ids.includes(complaint.id)),
+    }));
+    duplicateReviewEvents = duplicateEventRows;
+    alerts = alertRows;
+    slaRules = slaRows;
+    statutorySLATargetDays =
+      settingRows.find((setting) => setting.id === 'statutory_sla_target_days')?.value ?? 30;
+    notifyLoaded();
+  },
+
+  // Authentication user is obtained from the verified Supabase session.
+  getCurrentUser: (): User =>
+    currentUser ?? { id: '', name: 'Official', email: '', role: 'other_official' },
+  setCurrentUser: (user: User) => {
+    currentUser = user;
   },
   logout: () => {
     currentUser = null;
-    isAuthenticated = false;
   },
-  setCurrentUser: (user: User) => {
-    currentUser = user;
-    isAuthenticated = true;
-  },
-  getAllUsers: () => mockUsers,
-  getAllBureaus: () => mockBureaus,
+  getAllUsers: () => [...users],
+  getAllBureaus: () => [...bureaus],
 
   // Complaints
   getComplaints: () => [...complaints],
-  getComplaintById: (id: string) => {
-    const complaint = complaints.find(c => c.id === id);
-    if (!complaint) return null;
-    const inst = institutions.find(i => i.id === complaint.institution_id);
-    return { ...complaint, institution: inst };
-  },
-  createComplaint: (data: Omit<Complaint, 'id' | 'case_number' | 'created_at'>) => {
-    const newId = `c-${complaints.length + 1}`;
-    const caseNumber = `TRAC-2026-${String(complaints.length + 1).padStart(5, '0')}`;
-    const newCase: Complaint = {
-      ...data,
-      id: newId,
-      case_number: caseNumber,
-      created_at: new Date().toISOString(),
-      institution: data.institution_id ? institutions.find(i => i.id === data.institution_id) : undefined,
-    };
-    complaints = [newCase, ...complaints];
-
-    // Append-only audit record
-    dataStore.addAuditAction({
-      case_id: newId,
-      action_type: 'created',
-      performed_by: currentUser ? currentUser.id : 'anon',
-      performed_by_name: currentUser ? currentUser.name : 'Public / Officer',
-      bureau_id: data.bureau_id,
-      bureau_code: data.bureau_code,
-      remarks: 'Complaint registered in the central monitoring repository',
+  getComplaintById: (id: string) => complaints.find((complaint) => complaint.id === id) ?? null,
+  createComplaint: async (data: Omit<Complaint, 'id' | 'case_number' | 'created_at'>) => {
+    const { data: insertedRows, error } = await createClient().rpc('create_case', {
+      p_id: crypto.randomUUID(),
+      p_institution_id: data.institution_id ?? null,
+      p_institution_name_raw: data.institution_name_raw,
+      p_permanent_id_raw: data.permanent_id_raw ?? null,
+      p_category: data.category,
+      p_description: data.description,
+      p_complainant_type: data.complainant_type,
+      p_date_received: data.date_received,
+      p_status: data.status,
+      p_bureau_id: data.bureau_id,
+      p_bureau_code: data.bureau_code,
+      p_assigned_officer_name: data.assigned_officer_name ?? currentUser?.name ?? 'Official',
+      p_expected_disposal_date: data.expected_disposal_date ?? null,
+      p_match_method: data.match_method ?? null,
     });
-
-    // If Permanent ID was missing, route to resolution queue
-    if (!data.institution_id) {
-      dataStore.addToResolutionQueue({
-        case_id: newId,
-        case_number: caseNumber,
-        raw_institution_name: data.institution_name_raw,
-        raw_permanent_id: data.permanent_id_raw || null,
-        bureau_code: data.bureau_code,
-      });
+    const row = Array.isArray(insertedRows) ? insertedRows[0] : insertedRows;
+    const created = requireResult(row as Complaint | null, error, 'Unable to register case');
+    const complaint = {
+      ...created,
+      institution: institutions.find((institution) => institution.id === created.institution_id),
+    };
+    complaints = [complaint, ...complaints];
+    const audit = await readRows<CaseAction>('case_actions');
+    caseActions = audit;
+    if (!created.institution_id) {
+      resolutionQueue = await readRows<InstitutionResolutionQueueItem>('institution_resolution_queue');
     }
-
-    return newCase;
+    return complaint;
   },
-  updateComplaintStatus: (id: string, newStatus: Complaint['status'], remarks: string) => {
-    const existing = complaints.find(c => c.id === id);
-    if (!existing) return null;
-    const beforeState = { status: existing.status };
-    existing.status = newStatus;
-    existing.last_action = remarks || `Status changed to ${newStatus}`;
-    existing.last_action_date = new Date().toISOString();
 
-    dataStore.addAuditAction({
-      case_id: id,
-      action_type: newStatus === 'transferred' ? 'transferred' : newStatus === 'escalated' ? 'escalated' : newStatus === 'disposed' ? 'disposed' : 'updated',
-      performed_by: currentUser ? currentUser.id : 'sys',
-      performed_by_name: currentUser ? currentUser.name : 'Authorized Official',
-      bureau_id: existing.bureau_id,
-      bureau_code: existing.bureau_code,
-      remarks: remarks || `Status updated to ${newStatus}`,
-      before_state: beforeState,
-      after_state: { status: newStatus },
+  updateComplaintStatus: async (id: string, status: Complaint['status'], remarks: string) => {
+    const { data, error } = await createClient().rpc('update_case_status', {
+      p_case_id: id,
+      p_status: status,
+      p_remarks: remarks,
+      p_actor_name: currentUser?.name ?? 'Official',
     });
-
-    return existing;
+    const updated = requireResult(
+      (Array.isArray(data) ? data[0] : data) as Complaint | null,
+      error,
+      'Unable to update case status',
+    );
+    const next = { ...updated, institution: institutions.find((item) => item.id === updated.institution_id) };
+    complaints = complaints.map((complaint) => complaint.id === id ? next : complaint);
+    caseActions = await readRows<CaseAction>('case_actions');
+    return next;
   },
-  transferComplaint: (id: string, targetBureauCode: BureauCode, remarks: string) => {
-    const existing = complaints.find(c => c.id === id);
-    if (!existing) return null;
-    const targetBureau = mockBureaus.find(b => b.code === targetBureauCode);
-    if (!targetBureau) return null;
 
-    const fromCode = existing.bureau_code;
-    existing.bureau_id = targetBureau.id;
-    existing.bureau_code = targetBureau.code;
-    existing.status = 'transferred';
-    existing.last_action = `Transferred from ${fromCode} to ${targetBureauCode}: ${remarks}`;
-    existing.last_action_date = new Date().toISOString();
-
-    dataStore.addAuditAction({
-      case_id: id,
-      action_type: 'transferred',
-      performed_by: currentUser ? currentUser.id : 'sys',
-      performed_by_name: currentUser ? currentUser.name : 'Authorized Official',
-      bureau_id: targetBureau.id,
-      bureau_code: targetBureau.code,
-      from_bureau_code: fromCode,
-      to_bureau_code: targetBureauCode,
-      remarks,
+  transferComplaint: async (id: string, targetBureauCode: BureauCode, remarks: string) => {
+    const { data, error } = await createClient().rpc('transfer_case', {
+      p_case_id: id,
+      p_target_bureau_code: targetBureauCode,
+      p_remarks: remarks,
+      p_actor_name: currentUser?.name ?? 'Official',
     });
-
-    return existing;
+    const updated = requireResult(
+      (Array.isArray(data) ? data[0] : data) as Complaint | null,
+      error,
+      'Unable to transfer case',
+    );
+    const next = { ...updated, institution: institutions.find((item) => item.id === updated.institution_id) };
+    complaints = complaints.map((complaint) => complaint.id === id ? next : complaint);
+    caseActions = await readRows<CaseAction>('case_actions');
+    return next;
   },
 
-  // Audit trail
-  getActionsForCase: (caseId: string) => {
-    return caseActions.filter(a => a.case_id === caseId).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  },
-  addAuditAction: (action: Omit<CaseAction, 'id' | 'created_at'>) => {
-    const newAction: CaseAction = {
-      ...action,
-      id: `act-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      created_at: new Date().toISOString(),
-    };
-    caseActions = [newAction, ...caseActions];
-    return newAction;
-  },
+  getActionsForCase: (caseId: string) =>
+    caseActions
+      .filter((action) => action.case_id === caseId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
 
-  // Institutions
   getInstitutions: () => [...institutions],
-  getInstitutionById: (id: string) => institutions.find(i => i.id === id),
-  getComplaintsForInstitution: (institutionId: string) => complaints.filter(c => c.institution_id === institutionId),
+  getInstitutionById: (id: string) => institutions.find((institution) => institution.id === id),
+  getComplaintsForInstitution: (institutionId: string) =>
+    complaints.filter((complaint) => complaint.institution_id === institutionId),
 
-  // Institution Resolution Queue
-  getResolutionQueue: () => resolutionQueue.filter(q => q.status === 'pending'),
-  addToResolutionQueue: (item: Omit<InstitutionResolutionQueueItem, 'id' | 'status' | 'created_at'>) => {
-    const newQueueItem: InstitutionResolutionQueueItem = {
-      ...item,
-      id: `q-${resolutionQueue.length + 1}`,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    };
-    resolutionQueue = [newQueueItem, ...resolutionQueue];
-    return newQueueItem;
-  },
-  getSuggestionsForQueueItem: (queueId: string) => {
-    return matchSuggestions.filter(s => s.queue_id === queueId);
-  },
-  resolveInstitutionQueueItem: (queueId: string, selectedInstitutionId: string, reason: string) => {
-    const queueItem = resolutionQueue.find(q => q.id === queueId);
-    if (!queueItem) return null;
-    const inst = institutions.find(i => i.id === selectedInstitutionId);
-    if (!inst) return null;
-
-    queueItem.status = 'resolved';
-
-    // Link complaint explicitly
-    const comp = complaints.find(c => c.id === queueItem.case_id);
-    if (comp) {
-      comp.institution_id = selectedInstitutionId;
-      comp.match_method = 'manual';
-      comp.institution = inst;
-      comp.institution_name_raw = inst.name;
-      comp.permanent_id_raw = inst.aicte_permanent_id;
-      comp.last_action = `Institution manually matched to ${inst.name} (${inst.aicte_permanent_id}): ${reason}`;
-      comp.last_action_date = new Date().toISOString();
-
-      dataStore.addAuditAction({
-        case_id: comp.id,
-        action_type: 'institution_resolved',
-        performed_by: currentUser ? currentUser.id : 'sys',
-        performed_by_name: currentUser ? currentUser.name : 'Authorized Official',
-        bureau_id: comp.bureau_id,
-        bureau_code: comp.bureau_code,
-        remarks: `Institution resolved by official: ${reason}`,
-        after_state: { institution_id: selectedInstitutionId, match_method: 'manual' },
+  getResolutionQueue: () => resolutionQueue.filter((item) => item.status === 'pending'),
+  getSuggestionsForQueueItem: (queueId: string) =>
+    matchSuggestions.filter((suggestion) => suggestion.queue_id === queueId),
+  resolveInstitutionQueueItem: async (queueId: string, institutionId: string, reason: string) => {
+    const { data, error } = await createClient().rpc('resolve_institution_queue_item', {
+      p_queue_id: queueId,
+      p_institution_id: institutionId,
+      p_reason: reason,
+      p_actor_name: currentUser?.name ?? 'Official',
+    });
+    const resolved = requireResult(
+      (Array.isArray(data) ? data[0] : data) as InstitutionResolutionQueueItem | null,
+      error,
+      'Unable to resolve institution',
+    );
+    resolutionQueue = resolutionQueue.map((item) => item.id === queueId ? resolved : item);
+    const complaint = complaints.find((item) => item.id === resolved.case_id);
+    const institution = institutions.find((item) => item.id === institutionId);
+    if (complaint && institution) {
+      Object.assign(complaint, {
+        institution_id: institution.id,
+        institution_name_raw: institution.name,
+        permanent_id_raw: institution.aicte_permanent_id,
+        match_method: 'manual',
+        institution,
       });
     }
-
-    return queueItem;
+    caseActions = await readRows<CaseAction>('case_actions');
+    return resolved;
   },
 
-  // Overlap flags
-  getOverlapFlags: () => {
-    return overlapFlags.map(f => {
-      const relatedCases = complaints.filter(c => f.case_ids.includes(c.id));
-      return { ...f, cases: relatedCases };
+  getOverlapFlags: () => overlapFlags.map((flag) => ({
+    ...flag,
+    cases: complaints.filter((complaint) => flag.case_ids.includes(complaint.id)),
+  })),
+  recordOverlapReview: async (flagId: string, action: 'coordinated' | 'dismissed' | 'remark', notes: string) => {
+    const { data, error } = await createClient().rpc('record_overlap_review', {
+      p_flag_id: flagId,
+      p_action: action,
+      p_notes: notes,
+      p_actor_name: currentUser?.name ?? 'Official',
     });
-  },
-  recordOverlapReview: (flagId: string, action: 'coordinated' | 'dismissed' | 'remark', notes: string) => {
-    const flag = overlapFlags.find(f => f.id === flagId);
-    if (!flag) return null;
-    if (action === 'coordinated') flag.status = 'coordinated';
-    if (action === 'dismissed') flag.status = 'dismissed';
-    flag.updated_at = new Date().toISOString();
-
-    const reviewEvent: OverlapReviewEvent = {
-      id: `ov-rev-${Date.now()}`,
-      flag_id: flagId,
-      action,
-      notes,
-      reviewed_by: currentUser ? currentUser.id : 'sys',
-      reviewed_by_name: currentUser ? currentUser.name : 'Authorized Official',
-      reviewed_at: new Date().toISOString(),
-    };
-    overlapReviewEvents = [reviewEvent, ...overlapReviewEvents];
-    return reviewEvent;
+    const event = requireResult(
+      (Array.isArray(data) ? data[0] : data) as OverlapReviewEvent | null,
+      error,
+      'Unable to save overlap review',
+    );
+    overlapReviewEvents = [event, ...overlapReviewEvents];
+    if (action !== 'remark') {
+      overlapFlags = overlapFlags.map((flag) => flag.id === flagId ? {
+        ...flag,
+        status: action === 'coordinated' ? 'coordinated' : 'dismissed',
+        updated_at: event.reviewed_at,
+      } : flag);
+    }
+    return event;
   },
 
-  // Duplicate flags
-  getDuplicateFlags: () => {
-    return duplicateFlags.map(f => {
-      const relatedCases = complaints.filter(c => f.case_ids.includes(c.id));
-      return { ...f, cases: relatedCases };
+  getDuplicateFlags: () => duplicateFlags.map((flag) => ({
+    ...flag,
+    cases: complaints.filter((complaint) => flag.case_ids.includes(complaint.id)),
+  })),
+  recordDuplicateReview: async (
+    flagId: string,
+    action: 'confirmed_duplicate' | 'dismissed' | 'remark',
+    notes: string,
+  ) => {
+    const { data, error } = await createClient().rpc('record_duplicate_review', {
+      p_flag_id: flagId,
+      p_action: action,
+      p_notes: notes,
+      p_actor_name: currentUser?.name ?? 'Official',
     });
-  },
-  recordDuplicateReview: (flagId: string, action: 'confirmed_duplicate' | 'dismissed' | 'remark', notes: string) => {
-    const flag = duplicateFlags.find(f => f.id === flagId);
-    if (!flag) return null;
-    if (action === 'confirmed_duplicate') flag.status = 'confirmed_duplicate';
-    if (action === 'dismissed') flag.status = 'dismissed';
-
-    const reviewEvent: DuplicateReviewEvent = {
-      id: `dup-rev-${Date.now()}`,
-      flag_id: flagId,
-      action,
-      notes,
-      reviewed_by: currentUser ? currentUser.id : 'sys',
-      reviewed_by_name: currentUser ? currentUser.name : 'Authorized Official',
-      reviewed_at: new Date().toISOString(),
-    };
-    duplicateReviewEvents = [reviewEvent, ...duplicateReviewEvents];
-    return reviewEvent;
+    const event = requireResult(
+      (Array.isArray(data) ? data[0] : data) as DuplicateReviewEvent | null,
+      error,
+      'Unable to save duplicate review',
+    );
+    duplicateReviewEvents = [event, ...duplicateReviewEvents];
+    if (action !== 'remark') {
+      duplicateFlags = duplicateFlags.map((flag) => flag.id === flagId ? {
+        ...flag,
+        status: action,
+      } : flag);
+    }
+    return event;
   },
 
-  // Alerts
   getAlerts: () => [...alerts],
-  markAlertAsRead: (id: string) => {
-    const alt = alerts.find(a => a.id === id);
-    if (alt) alt.is_read = true;
+  markAlertAsRead: async (id: string) => {
+    const { data, error } = await createClient()
+      .from('alerts')
+      .update({ is_read: true })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    const updated = requireResult(data, error, 'Unable to mark alert as read');
+    alerts = alerts.map((alert) => alert.id === id ? updated as Alert : alert);
   },
 
-  // Computed metrics for dashboard
   getDashboardMetrics: () => {
-    const total = complaints.length;
-    const pending = complaints.filter(c => c.status === 'pending').length;
-    const underProcess = complaints.filter(c => c.status === 'under_process').length;
-    const disposed = complaints.filter(c => c.status === 'disposed').length;
-    const transferred = complaints.filter(c => c.status === 'transferred').length;
-    const escalated = complaints.filter(c => c.status === 'escalated').length;
-
-    // Computed view: cases pending beyond timeline (not disposed, disposal date < now)
-    const now = new Date();
-    const pendingBeyondTimeline = complaints.filter(c => {
-      if (c.status === 'disposed') return false;
-      if (!c.expected_disposal_date) return false;
-      return new Date(c.expected_disposal_date) < now;
-    }).length;
-
-    const openOverlaps = overlapFlags.filter(f => f.status === 'open').length;
-    const openDuplicates = duplicateFlags.filter(f => f.status === 'open').length;
-    const pendingResolution = resolutionQueue.filter(q => q.status === 'pending').length;
-
-    // Bureau-wise counts
-    const bureauWorkload = mockBureaus.map(b => {
-      const bureauComplaints = complaints.filter(c => c.bureau_code === b.code);
+    const pending = complaints.filter((complaint) => complaint.status === 'pending').length;
+    const underProcess = complaints.filter((complaint) => complaint.status === 'under_process').length;
+    const disposed = complaints.filter((complaint) => complaint.status === 'disposed').length;
+    const transferred = complaints.filter((complaint) => complaint.status === 'transferred').length;
+    const escalated = complaints.filter((complaint) => complaint.status === 'escalated').length;
+    const pendingBeyondTimeline = complaints.filter((complaint) =>
+      complaint.status !== 'disposed' &&
+      Boolean(complaint.expected_disposal_date) &&
+      new Date(complaint.expected_disposal_date!).getTime() < Date.now(),
+    ).length;
+    const bureauWorkload = bureaus.map((bureau) => {
+      const bureauComplaints = complaints.filter((complaint) => complaint.bureau_code === bureau.code);
       return {
-        code: b.code,
-        name: b.name,
+        code: bureau.code,
+        name: bureau.name,
         total: bureauComplaints.length,
-        active: bureauComplaints.filter(c => c.status !== 'disposed').length,
-        disposed: bureauComplaints.filter(c => c.status === 'disposed').length,
+        active: bureauComplaints.filter((complaint) => complaint.status !== 'disposed').length,
+        disposed: bureauComplaints.filter((complaint) => complaint.status === 'disposed').length,
       };
     });
 
     return {
-      total,
+      total: complaints.length,
       pending,
       underProcess,
       disposed,
       transferred,
       escalated,
       pendingBeyondTimeline,
-      openOverlaps,
-      openDuplicates,
-      pendingResolution,
+      openOverlaps: overlapFlags.filter((flag) => flag.status === 'open').length,
+      openDuplicates: duplicateFlags.filter((flag) => flag.status === 'open').length,
+      pendingResolution: resolutionQueue.filter((item) => item.status === 'pending').length,
       bureauWorkload,
     };
   },
 
-  // SLA rules and Statutory Baseline Target
-  getSLARules: () => [...mockSLARules],
+  getSLARules: () => [...slaRules],
   getStatutorySLATarget: () => statutorySLATargetDays,
-  setStatutorySLATarget: (days: number) => {
-    statutorySLATargetDays = days;
+  setStatutorySLATarget: async (days: number) => {
+    const { data, error } = await createClient()
+      .from('app_settings')
+      .update({ value: days })
+      .eq('id', 'statutory_sla_target_days')
+      .select('value')
+      .maybeSingle();
+    const setting = requireResult(data, error, 'Unable to update statutory SLA target');
+    statutorySLATargetDays = setting.value;
   },
 };

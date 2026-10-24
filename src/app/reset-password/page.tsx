@@ -2,17 +2,18 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Lock, CheckCircle2, ArrowRight, ShieldCheck } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 
 export default function ResetPasswordPage() {
-  const router = useRouter();
+  const { updatePassword, isLoading: authLoading } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword.length < 8) {
       setError('Password must contain at least 8 characters.');
@@ -23,6 +24,13 @@ export default function ResetPasswordPage() {
       return;
     }
     setError(null);
+    setIsSubmitting(true);
+    const updateError = await updatePassword(newPassword);
+    setIsSubmitting(false);
+    if (updateError) {
+      setError(updateError);
+      return;
+    }
     setSuccess(true);
   };
 
@@ -54,14 +62,14 @@ export default function ResetPasswordPage() {
               </div>
               <h3 className="font-bold text-base text-white tracking-tight">Password Updated Successfully</h3>
               <p className="text-xs text-neutral-400 leading-relaxed">
-                Your credentials have been updated securely. You may now sign in using your new credentials.
+                Your credentials have been updated securely. Continue to the dashboard with your recovery session.
               </p>
               <div className="pt-2">
                 <Link
-                  href="/login"
+                  href="/"
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-black rounded-xl text-xs font-semibold hover:bg-neutral-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] active:scale-[0.98]"
                 >
-                  Return to Sign In <ArrowRight className="w-3.5 h-3.5" />
+                  Continue to Dashboard <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               </div>
             </div>
@@ -109,9 +117,10 @@ export default function ResetPasswordPage() {
 
               <button
                 type="submit"
-                className="w-full mt-2 py-2.5 px-4 rounded-xl text-xs font-bold text-black bg-white hover:bg-neutral-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] active:scale-[0.98]"
+                disabled={isSubmitting || authLoading}
+                className="w-full mt-2 py-2.5 px-4 rounded-xl text-xs font-bold text-black bg-white hover:bg-neutral-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
               >
-                Update Password
+                {isSubmitting ? 'Updating…' : 'Update Password'}
               </button>
             </form>
           )}

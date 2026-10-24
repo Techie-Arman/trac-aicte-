@@ -19,11 +19,9 @@ import {
   User as UserIcon,
   LogOut,
   Sliders,
-  ChevronRight,
   Search,
 } from 'lucide-react';
 import { dataStore } from '@/lib/store';
-import { User } from '@/types';
 import { useAuth } from '@/lib/auth-context';
 
 const G = {
@@ -42,10 +40,18 @@ const G = {
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAuthenticated, logout, switchRole } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    isDemoMode,
+    isDataLoading,
+    dataError,
+    dataVersion,
+    logout,
+    retryDataLoad,
+  } = useAuth();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
@@ -54,7 +60,6 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  const users = dataStore.getAllUsers();
   const metrics = dataStore.getDashboardMetrics();
   const alerts = dataStore.getAlerts();
   const unreadAlerts = alerts.filter((a) => !a.is_read);
@@ -72,20 +77,15 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleRoleChange = (selectedUser: User) => {
-    switchRole(selectedUser);
-    setRoleSwitcherOpen(false);
-  };
-
-  const handleSignOut = () => {
-    setLogoutConfirmOpen(false);
-    logout();
+  const handleSignOut = async () => {
+    if (await logout()) setLogoutConfirmOpen(false);
   };
 
   const isAuthPage =
     pathname === '/login' ||
     pathname === '/forgot-password' ||
     pathname === '/reset-password' ||
+    pathname === '/auth/callback' ||
     pathname === '/session-expired' ||
     pathname === '/access-denied';
 
@@ -94,7 +94,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   }
 
   // Don't render app shell while unauthenticated (redirect happening)
-  if (!isAuthenticated) {
+  if (!isAuthenticated || isDataLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0a0a0c]">
         <div
@@ -105,7 +105,23 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     );
   }
 
-  const currentUser = user || users[0];
+  if (dataError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#f5f5f7] px-6 text-center">
+        <h1 className="text-lg font-semibold text-neutral-900">Unable to load dashboard data</h1>
+        <p className="max-w-xl text-sm text-neutral-600">{dataError}</p>
+        <button
+          type="button"
+          onClick={() => void retryDataLoad()}
+          className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-neutral-700"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const currentUser = user || dataStore.getCurrentUser();
 
   const navItems = [
     { label: 'Dashboard',           href: '/',                   icon: LayoutDashboard },
@@ -221,72 +237,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           </nav>
         </div>
 
-        {/* Demo Role Switcher in Sidebar */}
-        <div
-          className="p-3 relative border-t border-white/10"
-        >
-          <div
-            className="flex items-center justify-between mb-1.5 px-1"
-          >
-            <span className="text-[9px] font-bold tracking-[0.15em] uppercase text-white/60">
-              Demo Persona
-            </span>
-            <span
-              className="text-[8px] px-1.5 py-0.5 rounded font-mono font-bold bg-white/10 text-white/50 border border-white/10"
-            >
-              SIM
-            </span>
+        <div className="p-3 border-t border-white/10">
+          <div className="mb-1.5 px-1 text-[9px] font-bold tracking-[0.15em] uppercase text-white/60">
+            {isDemoMode ? 'Demo Session' : 'Signed-in Account'}
           </div>
-
-          <button
-            onClick={() => setRoleSwitcherOpen(!roleSwitcherOpen)}
-            className="w-full flex items-center justify-between p-2.5 rounded-xl transition-all text-left bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-white cursor-pointer"
-          >
-            <div className="truncate">
-              <div className="text-[11px] font-semibold truncate text-white">{currentUser.name}</div>
-              <div className="text-[10px] capitalize text-white/60 mt-0.5 truncate">
-                {currentUser.role.replace('_', ' ')} {currentUser.bureau_code ? `· ${currentUser.bureau_code}` : ''}
-              </div>
+          <div className="w-full rounded-xl border border-white/10 bg-white/[0.04] p-2.5 text-white">
+            <div className="truncate text-[11px] font-semibold">{currentUser.name}</div>
+            <div className="mt-0.5 truncate text-[10px] capitalize text-white/60">
+              {currentUser.role.replace('_', ' ')} {currentUser.bureau_code ? `· ${currentUser.bureau_code}` : ''}
             </div>
-            <ChevronRight
-              className={`w-3.5 h-3.5 flex-shrink-0 text-white/30 transition-transform ${roleSwitcherOpen ? 'rotate-90' : ''}`}
-            />
-          </button>
-
-          {roleSwitcherOpen && (
-            <div
-              className="absolute bottom-full left-3 right-3 mb-2 rounded-2xl p-1.5 z-50 bg-[#161619] border border-white/15 shadow-2xl backdrop-blur-2xl"
-            >
-              <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white/60 border-b border-white/10">
-                Switch Official Perspective
-              </div>
-              <div className="space-y-0.5 mt-1 max-h-56 overflow-y-auto">
-                {users.map((u) => (
-                  <button
-                    key={u.id}
-                    onClick={() => handleRoleChange(u)}
-                    className="w-full text-left p-2 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer"
-                    style={{
-                      background: u.id === currentUser.id ? 'rgba(255,255,255,0.1)' : 'transparent',
-                      color: u.id === currentUser.id ? '#ffffff' : 'rgba(255,255,255,0.7)',
-                    }}
-                    onMouseEnter={e => { if (u.id !== currentUser.id) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; }}
-                    onMouseLeave={e => { if (u.id !== currentUser.id) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                  >
-                    <div className="truncate">
-                      <div className="font-semibold text-[11px] truncate">{u.name}</div>
-                      <div className="text-[9px] uppercase tracking-wider text-white/40">
-                        {u.role.replace('_', ' ')}{u.bureau_code ? ` · ${u.bureau_code}` : ''}
-                      </div>
-                    </div>
-                    {u.id === currentUser.id && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-white flex-shrink-0 ml-2" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </aside>
 
@@ -463,6 +423,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
         {/* ── Main Authenticated Page Content ── */}
         <main
+          key={dataVersion}
           className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto text-neutral-900"
         >
           {children}
@@ -497,7 +458,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           >
             <h3 className="text-base font-bold mb-1 text-neutral-900 tracking-tight">End Session?</h3>
             <p className="text-xs leading-relaxed mb-6 text-neutral-500">
-              You will be returned to the sign-in terminal. Your demo session state will be reset.
+              You will be returned to the sign-in terminal and your session will end.
             </p>
             <div className="flex items-center justify-end gap-3">
               <button

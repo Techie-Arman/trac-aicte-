@@ -15,14 +15,20 @@ export default function OverlapCenterPage() {
   );
   const [reviewNotes, setReviewNotes] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const activeFlag = flags.find((f) => f.id === selectedFlagId);
 
-  const handleAction = (action: 'coordinated' | 'dismissed' | 'remark') => {
+  const handleAction = async (action: 'coordinated' | 'dismissed' | 'remark') => {
     if (!activeFlag) return;
-    dataStore.recordOverlapReview(activeFlag.id, action, reviewNotes);
-    setSuccessMessage(`Overlap coordination recorded: ${action}`);
-    setReviewNotes('');
+    setActionError(null);
+    try {
+      await dataStore.recordOverlapReview(activeFlag.id, action, reviewNotes);
+      setSuccessMessage(`Overlap coordination recorded: ${action}`);
+      setReviewNotes('');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to save overlap review.');
+    }
   };
 
   return (
@@ -62,6 +68,11 @@ export default function OverlapCenterPage() {
         >
           <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-white" />
           <span>{successMessage}</span>
+        </div>
+      )}
+      {actionError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800" role="alert">
+          {actionError}
         </div>
       )}
 

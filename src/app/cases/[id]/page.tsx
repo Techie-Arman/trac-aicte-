@@ -33,6 +33,7 @@ export default function CaseDetailPage() {
   const bureaus = dataStore.getAllBureaus();
 
   const [activeTab, setActiveTab] = useState<'details' | 'timeline'>('details');
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Modal / Form States
   const [statusModalOpen, setStatusModalOpen] = useState(false);
@@ -64,26 +65,36 @@ export default function CaseDetailPage() {
   const isPrivileged = currentUser.role === 'admin' || currentUser.role === 'senior';
   const hasFullAccess = isOwningBureau || isPrivileged;
 
-  const handleUpdateStatus = (e: React.FormEvent) => {
+  const handleUpdateStatus = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!statusRemarks.trim() || statusRemarks.trim().length < 5) {
       alert('Official remarks must be at least 5 characters long.');
       return;
     }
-    dataStore.updateComplaintStatus(complaint.id, selectedStatus, statusRemarks.trim());
-    setStatusModalOpen(false);
-    setStatusRemarks('');
+    setActionError(null);
+    try {
+      await dataStore.updateComplaintStatus(complaint.id, selectedStatus, statusRemarks.trim());
+      setStatusModalOpen(false);
+      setStatusRemarks('');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to update case status.');
+    }
   };
 
-  const handleTransfer = (e: React.FormEvent) => {
+  const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!transferRemarks.trim() || transferRemarks.trim().length < 5) {
       alert('Transfer reason must be at least 5 characters long.');
       return;
     }
-    dataStore.transferComplaint(complaint.id, targetBureau, transferRemarks.trim());
-    setTransferModalOpen(false);
-    setTransferRemarks('');
+    setActionError(null);
+    try {
+      await dataStore.transferComplaint(complaint.id, targetBureau, transferRemarks.trim());
+      setTransferModalOpen(false);
+      setTransferRemarks('');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to transfer case.');
+    }
   };
 
   const now = new Date();
@@ -99,6 +110,11 @@ export default function CaseDetailPage() {
 
   return (
     <div className="space-y-6 text-neutral-900 animate-fade-in">
+      {actionError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800" role="alert">
+          {actionError}
+        </div>
+      )}
       {/* Top Navigation */}
       <div className="flex items-center justify-between">
         <Link
